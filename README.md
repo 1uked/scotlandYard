@@ -1,2 +1,0 @@
-# scotlandYard
-OOP Project
