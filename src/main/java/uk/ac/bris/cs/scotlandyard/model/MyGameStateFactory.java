@@ -59,7 +59,7 @@ public final class MyGameStateFactory implements Factory<GameState> {
 		}
 		return new MyGameState(setup,
 				ImmutableSet.of(Piece.MrX.MRX),
-				ImmutableSet.of(), // What goes here? They don't say
+				ImmutableList.of(),
 				mrX,
 				detectives);
 	}
