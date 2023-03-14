@@ -23,13 +23,14 @@ public final class MyGameStateFactory implements Factory<GameState> {
 	private final class MyGameState implements GameState {
 		/* Variables */
 		private GameSetup setup;
-		private ImmutableSet<Piece> remaining;
+		private ImmutableSet<Player> remaining;
 		private ImmutableList<LogEntry> log;
 		private Player mrX;
 		private List<Player> detectives;
 		private ImmutableSet<Move> moves;
 		private ImmutableSet<Piece> winner;
-		private ImmutableSet<Piece> allPlayers;
+		private ImmutableSet<Player> allPlayers;
+		private ImmutableSet<Piece> allPieces;
 		/* Variables END */
 
 		/* Constructor */
@@ -72,23 +73,32 @@ public final class MyGameStateFactory implements Factory<GameState> {
 			/* Tests END*/
 
 			/* Assign Variables*/
+
+			/* All Players + Pieces*/
+			Set<Piece> allPiece = new HashSet<Piece>();
+			allPiece.add(mrX.piece());
+			for(Player d:detectives){allPiece.add(d.piece());}
+			this.allPieces= ImmutableSet.copyOf(allPiece);
+
+			Set<Player> allPlayer = new HashSet<Player>();
+			allPlayer.add(mrX);
+			allPlayer.addAll(detectives);
+			this.allPlayers = ImmutableSet.copyOf(allPlayer);
+			/* All Players END*/
 			this.setup = setup;
-			this.remaining = remaining;
+			this.remaining = allPlayers;
 			this.log = log;
 			this.mrX = mrX;
 			this.detectives = detectives;
 			this.moves = getAvailableMoves();
 			this.winner = ImmutableSet.<Piece>builder().build();
-			/* All Players*/
-			Set<Piece> allPlayer = new HashSet<Piece>();
-			allPlayer.add(mrX.piece());
-			for(Player d:detectives){allPlayer.add(d.piece());}
-			this.allPlayers = ImmutableSet.copyOf(allPlayer);
-			/* All Players END*/
 			/* Variables END*/
 
 		}
+
 		/* Constructor END*/
+
+
 
 		/* Methods Privacy Amendment Needed */
 		@Nonnull
@@ -100,7 +110,7 @@ public final class MyGameStateFactory implements Factory<GameState> {
 		@Nonnull
 		@Override
 		public ImmutableSet<Piece> getPlayers() {
-			return allPlayers;
+			return allPieces;
 		}
 
 		@Nonnull
@@ -127,13 +137,14 @@ public final class MyGameStateFactory implements Factory<GameState> {
 					// Need help to figure it out
 				}
 			}
+
 			return Optional.empty();
 		}
 
 		@Nonnull
 		@Override
 		public ImmutableList<LogEntry> getMrXTravelLog() {
-			return getMrXTravelLog();
+			return log;
 		}
 
 		@Nonnull
@@ -145,16 +156,92 @@ public final class MyGameStateFactory implements Factory<GameState> {
 		@Nonnull
 		@Override
 		public ImmutableSet<Move> getAvailableMoves() {
-			return null;
+
+			Set<Move> singleMoves = new HashSet<Move>();
+			Set<Move> doubleMoves = new HashSet<Move>();
+			for(Player p: ImmutableSet.of(mrX)){
+			    singleMoves.addAll(makeSingleMoves(setup,detectives,p,p.location()));
+				if((p.hasAtLeast(ScotlandYard.Ticket.DOUBLE,1)) && !(setup.moves.equals(ImmutableList.of(true)))){
+				doubleMoves.addAll(makeDoubleMoves(setup,detectives,p,p.location())); }
+				//if (p == mrX) { doubleMoves.addAll(makeDoubleMoves(setup,detectives,p,p.location()));}
+			}
+
+			Set<Move> allMoves = new HashSet<Move>();
+			allMoves.addAll(singleMoves);
+			allMoves.addAll(doubleMoves);
+			return ImmutableSet.copyOf(allMoves);
 		}
 
 		@Nonnull
 		@Override
 		public GameState advance(Move move) {
-			return null;
+			return this;
+			//throw new IllegalArgumentException("Move not found in Board.getAvailableMoves() ");
 		}
 	}
 	/* Methods END */
 
+	/* Helper Functions */
+	/* getAvailableMoves() - Single + Double */
+	private static Set<Move.SingleMove> makeSingleMoves(GameSetup setup, List<Player> detectives, Player player, int source){
 
+		/* Create an empty collection of some sort, say, HashSet, to store all the SingleMove we generate */
+		Set<Move.SingleMove> singleMoves = new HashSet<Move.SingleMove>();
+		Set<Integer> invalidLocations = new HashSet<Integer>();
+		for(Player p : detectives) { invalidLocations.add(p.location());}
+
+		for(int destination : setup.graph.adjacentNodes(source)) {
+			if (invalidLocations.contains(destination)) {continue;}
+			for(ScotlandYard.Transport t : setup.graph.edgeValueOrDefault(source, destination, ImmutableSet.of()) ) {
+
+				if (player.has(t.requiredTicket())) {
+					Move.SingleMove singleM = new Move.SingleMove(player.piece(), source,t.requiredTicket(),destination);
+					singleMoves.add(singleM);
+				}
+
+				if(player.has(ScotlandYard.Ticket.SECRET)) {
+					Move.SingleMove singleM = new Move.SingleMove(player.piece(), source, ScotlandYard.Ticket.SECRET,destination);
+					singleMoves.add(singleM);
+				}
+			}
+		}
+		return singleMoves;
+	}
+	private static Set<Move.DoubleMove> makeDoubleMoves(GameSetup setup, List<Player> detectives, Player player, int source){
+
+		/* Create an empty collection of some sort, say, HashSet, to store all the SingleMove we generate */
+		Set<Move.DoubleMove> doubleMoves = new HashSet<Move.DoubleMove>();
+		Set<Integer> invalidLocations = new HashSet<Integer>();
+		for(Player p : detectives) { invalidLocations.add(p.location());}
+
+		for(int destination : setup.graph.adjacentNodes(source)) {
+			if (invalidLocations.contains(destination)) {continue;}
+			for(ScotlandYard.Transport t : setup.graph.edgeValueOrDefault(source, destination, ImmutableSet.of()) ) {
+
+				if (player.has(t.requiredTicket())) {
+					// Change to call single move with 1 less ticket and store as a set and new source
+					Set<Move.SingleMove> secondMove = makeSingleMoves(setup,detectives,player.use(t.requiredTicket()),destination);
+					for (Move.SingleMove sMove:secondMove) {
+						doubleMoves.add(new Move.DoubleMove(player.piece(), source,t.requiredTicket(),destination,sMove.ticket,sMove.destination));
+					}
+				}
+
+				if(player.has(ScotlandYard.Ticket.SECRET)) {
+					Set<Move.SingleMove> secondMove = makeSingleMoves(setup,detectives,player.use(ScotlandYard.Ticket.SECRET),destination);
+					for (Move.SingleMove sMove:secondMove) {
+						doubleMoves.add(new Move.DoubleMove(player.piece(), source,ScotlandYard.Ticket.SECRET,destination,sMove.ticket,sMove.destination));
+					}
+				}
+			}
+		}
+		return doubleMoves;
+	}
+	/* getAvailableMoves() END*/
+	private static Player pieceToPlayer(Piece p, ImmutableSet<Player> allPlayers) {
+		for (Player pb : allPlayers) {
+			if (pb.piece() == p) {return pb;}
+		}
+		return null;
+	}
+	/* Helper Functions END*/
 }
